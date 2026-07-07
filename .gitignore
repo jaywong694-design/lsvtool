@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+dist/
+build/
+lsv_vfim_output/
+preview/
+output/
+outputs/
+*.zip
+*.xlsx
+*.csv
+*.png
