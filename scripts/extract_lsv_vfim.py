@@ -35,6 +35,12 @@ class CurveMeta:
     ph: float
     area_cm2: float
     sheet_name: str | None = None
+    reference_electrode: str = "Ag/AgCl"
+    ref_to_she_v: float = 0.197
+    apply_ir_correction: bool = False
+    rs_ohm: float = 0.0
+    ir_compensation_fraction: float = 1.0
+    current_sign_mode: str = "auto"
 
 
 def read_text(path: Path) -> str:

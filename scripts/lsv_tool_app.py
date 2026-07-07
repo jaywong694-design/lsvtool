@@ -37,7 +37,7 @@ HTML = r"""<!doctype html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>LSV 数据转换工具</title>
+  <title>LSV Data Tool</title>
   <style>
     :root {
       color-scheme: light;
@@ -195,6 +195,18 @@ HTML = r"""<!doctype html>
       font-weight: 650;
     }
 
+    select {
+      width: 132px;
+      height: 38px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 0 10px;
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+    }
+
     input {
       width: 116px;
       height: 38px;
@@ -293,7 +305,19 @@ HTML = r"""<!doctype html>
       header, .toolbar, .footer { display: grid; }
       .status { white-space: normal; }
       .defaults { display: grid; grid-template-columns: 1fr 1fr; }
-      input { width: 100%; }
+      select {
+      width: 132px;
+      height: 38px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 0 10px;
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+    }
+
+    input { width: 100%; }
       h1 { font-size: 24px; }
     }
   </style>
@@ -302,17 +326,17 @@ HTML = r"""<!doctype html>
   <main>
     <header>
       <div>
-        <h1>LSV 数据转换工具</h1>
-        <p class="sub">拖入原始 .DTA 文件，填写每条曲线的 pH 和面积，导出完整处理表和 Origin 作图表。</p>
+        <h1>LSV Data Tool</h1>
+        <p class="sub">Drop raw .DTA files, enter pH and electrode area, then export processed LSV, Tafel, target overpotential tables, and plots.</p>
       </div>
-      <div class="status" id="status">本地运行，文件不会上传到外网</div>
+      <div class="status" id="status">Running locally. Files stay on this computer.</div>
     </header>
 
     <section class="drop" id="drop">
       <div class="drop-inner">
-        <div class="drop-title">把 LSV 原始文件拖到这里</div>
-        <div class="drop-text">支持多个文件；也可以点击按钮选择。文件名相同会自动覆盖旧项。</div>
-        <label class="file-button" for="fileInput">选择文件</label>
+        <div class="drop-title">Drop raw LSV files here</div>
+        <div class="drop-text">Multiple files are supported. You can also click the button to choose files.</div>
+        <label class="file-button" for="fileInput">Choose files</label>
         <input id="fileInput" type="file" multiple />
       </div>
     </section>
@@ -325,22 +349,54 @@ HTML = r"""<!doctype html>
         <label>Tafel max j
           <input id="tafelMaxJ" type="number" step="0.1" value="100" />
         </label>
-        <label>默认 pH
-          <input id="defaultPh" type="number" step="0.001" placeholder="例如 8.41" />
+        <label>Default pH
+          <input id="defaultPh" type="number" step="0.001" value="13.2" />
         </label>
-        <label>默认面积 cm²
-          <input id="defaultArea" type="number" step="0.0001" placeholder="例如 0.25" />
+        <label>Default area cm2
+          <input id="defaultArea" type="number" step="0.0001" value="0.25" />
         </label>
-        <button class="secondary" id="applyDefaults" type="button">应用到空白项</button>
+        <label>Reference
+          <select id="referenceElectrode">
+            <option value="Ag/AgCl" selected>Ag/AgCl</option>
+            <option value="Hg/HgO">Hg/HgO</option>
+            <option value="Custom">Custom</option>
+          </select>
+        </label>
+        <label>Ref to SHE V
+          <input id="refToShe" type="number" step="0.001" value="0.197" />
+        </label>
+        <label>iR correction
+          <select id="applyIR">
+            <option value="false" selected>False</option>
+            <option value="true">True</option>
+          </select>
+        </label>
+        <label>Rs ohm
+          <input id="rsOhm" type="number" step="0.0001" value="0" />
+        </label>
+        <label>iR fraction
+          <input id="irFraction" type="number" step="0.01" value="1.0" />
+        </label>
+        <label>Current sign
+          <select id="currentSignMode">
+            <option value="auto" selected>auto</option>
+            <option value="positive">positive</option>
+            <option value="negative">negative</option>
+          </select>
+        </label>
+        <label>Target j list
+          <input id="targetJs" type="text" value="100,200,300" />
+        </label>
+        <button class="secondary" id="applyDefaults" type="button">Fill blanks</button>
       </div>
-      <button class="danger" id="clearFiles" type="button">清空</button>
+      <button class="danger" id="clearFiles" type="button">Clear</button>
     </section>
 
-    <div id="fileArea" class="empty">还没有文件。拖入或选择 `.DTA.###` 文件后，会在这里填写每条曲线的参数。</div>
+    <div id="fileArea" class="empty">No files yet. Drop or choose .DTA files, then enter parameters for each curve.</div>
 
     <div class="footer">
-      <div class="note">导出的完整 Excel 包含 A-E 五列；Origin 表使用每条曲线的 C/E 列；同时生成黑底 LSV 曲线图 PNG。</div>
-      <button id="exportBtn" type="button" disabled>导出结果</button>
+      <div class="note">Exports include full Excel data, Origin-ready CE tables, LSV/Tafel plots, and eta targets at selected current densities.</div>
+      <button id="exportBtn" type="button" disabled>Export results</button>
     </div>
     <div class="error" id="error"></div>
   </main>
@@ -355,7 +411,7 @@ HTML = r"""<!doctype html>
     const statusBox = document.getElementById('status');
 
     function safeSheetName(name) {
-      return name.replace(/\.[^.]+$/g, '').replace(/[\[\]:*?/\\]/g, '_').slice(0, 31) || 'LSV';
+      return name.replace(/\.[^.]+$/g, '').replace(/[\[\]:*?\/\\]/g, '_').slice(0, 31) || 'LSV';
     }
 
     function formatSize(size) {
@@ -379,10 +435,10 @@ HTML = r"""<!doctype html>
     function render() {
       errorBox.textContent = '';
       exportBtn.disabled = state.size === 0;
-      statusBox.textContent = state.size ? `已加入 ${state.size} 个文件` : '本地运行，文件不会上传到外网';
+      statusBox.textContent = state.size ? `Added ${state.size} file(s)` : 'Running locally. Files stay on this computer.';
       if (!state.size) {
         fileArea.className = 'empty';
-        fileArea.textContent = '还没有文件。拖入或选择 `.DTA.###` 文件后，会在这里填写每条曲线的参数。';
+        fileArea.textContent = 'No files yet. Drop or choose .DTA files, then enter parameters for each curve.';
         return;
       }
 
@@ -392,9 +448,9 @@ HTML = r"""<!doctype html>
           <td class="name" title="${item.file.name}">${item.file.name}</td>
           <td class="size">${formatSize(item.file.size)}</td>
           <td><input data-field="ph" data-name="${item.file.name}" type="number" step="0.001" value="${item.ph}" placeholder="pH"></td>
-          <td><input data-field="area" data-name="${item.file.name}" type="number" step="0.0001" value="${item.area}" placeholder="cm²"></td>
-          <td class="sheet"><input data-field="sheetName" data-name="${item.file.name}" value="${item.sheetName}" placeholder="sheet 名"></td>
-          <td class="actions"><button class="danger" data-remove="${item.file.name}" type="button">删除</button></td>
+          <td><input data-field="area" data-name="${item.file.name}" type="number" step="0.0001" value="${item.area}" placeholder="cm2"></td>
+          <td class="sheet"><input data-field="sheetName" data-name="${item.file.name}" value="${item.sheetName}" placeholder="sheet name"></td>
+          <td class="actions"><button class="danger" data-remove="${item.file.name}" type="button">Remove</button></td>
         </tr>
       `).join('');
 
@@ -402,11 +458,11 @@ HTML = r"""<!doctype html>
         <table>
           <thead>
             <tr>
-              <th>文件</th>
-              <th>大小</th>
+              <th>File</th>
+              <th>Size</th>
               <th>pH</th>
-              <th>面积 cm²</th>
-              <th>Sheet 名</th>
+              <th>Area cm2</th>
+              <th>Sheet name</th>
               <th></th>
             </tr>
           </thead>
@@ -453,6 +509,12 @@ HTML = r"""<!doctype html>
       render();
     });
 
+    document.getElementById('referenceElectrode').addEventListener('change', () => {
+      const ref = document.getElementById('referenceElectrode').value;
+      const refToShe = document.getElementById('refToShe');
+      if (ref === 'Ag/AgCl') refToShe.value = '0.197';
+      if (ref === 'Hg/HgO') refToShe.value = '0.098';
+    });
     document.getElementById('clearFiles').addEventListener('click', () => {
       state.clear();
       input.value = '';
@@ -464,7 +526,7 @@ HTML = r"""<!doctype html>
       const items = [...state.values()];
       for (const item of items) {
         if (!item.ph || !item.area) {
-          errorBox.textContent = '请先为每个文件填写 pH 和面积。';
+          errorBox.textContent = 'Please enter pH and area for every file.';
           return;
         }
       }
@@ -472,8 +534,16 @@ HTML = r"""<!doctype html>
       const form = new FormData();
       const tafelMinJ = Number(document.getElementById('tafelMinJ').value || 10);
       const tafelMaxJ = Number(document.getElementById('tafelMaxJ').value || 100);
+      const refToShe = Number(document.getElementById('refToShe').value);
+      const rsOhm = Number(document.getElementById('rsOhm').value || 0);
+      const irFraction = Number(document.getElementById('irFraction').value || 1);
+      const targetJs = document.getElementById('targetJs').value || '100,200,300';
       if (!(tafelMinJ > 0) || !(tafelMaxJ > tafelMinJ)) {
         errorBox.textContent = 'Tafel range must satisfy: 0 < min j < max j.';
+        return;
+      }
+      if (!Number.isFinite(refToShe) || !Number.isFinite(rsOhm) || !Number.isFinite(irFraction)) {
+        errorBox.textContent = 'Reference/iR parameters must be numeric.';
         return;
       }
       const manifest = items.map((item) => ({
@@ -485,10 +555,17 @@ HTML = r"""<!doctype html>
       form.append('manifest', JSON.stringify(manifest));
       form.append('tafel_min_j', String(tafelMinJ));
       form.append('tafel_max_j', String(tafelMaxJ));
+      form.append('reference_electrode', document.getElementById('referenceElectrode').value);
+      form.append('ref_to_she_v', String(refToShe));
+      form.append('apply_ir_correction', document.getElementById('applyIR').value);
+      form.append('rs_ohm', String(rsOhm));
+      form.append('ir_compensation_fraction', String(irFraction));
+      form.append('current_sign_mode', document.getElementById('currentSignMode').value);
+      form.append('target_current_densities', targetJs);
       for (const item of items) form.append('files', item.file, item.file.name);
 
       exportBtn.disabled = true;
-      exportBtn.textContent = '正在生成...';
+      exportBtn.textContent = 'Generating...';
       try {
         const response = await fetch('/api/export', { method: 'POST', body: form });
         if (!response.ok) {
@@ -504,12 +581,12 @@ HTML = r"""<!doctype html>
         link.click();
         link.remove();
         URL.revokeObjectURL(url);
-        statusBox.textContent = '导出完成';
+        statusBox.textContent = 'Export complete';
       } catch (error) {
         errorBox.textContent = error.message || String(error);
       } finally {
         exportBtn.disabled = state.size === 0;
-        exportBtn.textContent = '导出结果';
+        exportBtn.textContent = 'Export results';
       }
     });
   </script>
@@ -697,7 +774,7 @@ def build_lsv_plot_png(
         all_y.extend(y for _x, y in rows)
 
     if not plot_curves:
-        raise ValueError("没有可绘制的曲线数据。")
+        raise ValueError("No drawable curve data.")
 
     width, height = 1800, 1400
     left, right, top, bottom = 290, 120, 150, 190
@@ -742,7 +819,7 @@ def build_lsv_plot_png(
         bbox = draw.textbbox((0, 0), format_tick(tick), font=font_tick)
         draw.text((plot_left - 32 - (bbox[2] - bbox[0]), y - (bbox[3] - bbox[1]) / 2), format_tick(tick), font=font_tick, fill=label_color)
 
-    draw_text_centered(draw, ((plot_left + plot_right) / 2, height - 68), "电位/(V vs RHE)", font_label, label_color)
+    draw_text_centered(draw, ((plot_left + plot_right) / 2, height - 68), "Potential / V vs RHE", font_label, label_color)
     draw_rotated_label(image, "j/(mA cm-2)", (76, (plot_top + plot_bottom) // 2), font_label, label_color)
 
     for title, color, rows in plot_curves:
@@ -760,9 +837,9 @@ def build_lsv_plot_png(
         draw.text((legend_x + line_len + 20, y - 25), title, font=font_legend, fill=label_color)
 
     note_lines = [
-        "工作电极：自动导出曲线",
-        "对电极：碳棒电极",
-        "参比电极：Ag/AgCl",
+        "Working electrode: auto exported curve",
+        "Counter electrode: carbon rod",
+        "Reference electrode: see inputs",
     ]
     note_y = legend_y + len(plot_curves) * row_gap + 30
     for line in note_lines:
@@ -993,7 +1070,7 @@ def build_tafel_plot_png(fits: list[dict[str, Any]]) -> bytes:
         draw.text((plot_left - 32 - (bbox[2] - bbox[0]), y - (bbox[3] - bbox[1]) / 2), label, font=font_tick, fill=label_color)
 
     draw_text_centered(draw, ((plot_left + plot_right) / 2, height - 68), "log10 j/(mA cm-2)", font_label, label_color)
-    draw_rotated_label(image, "η/mV", (78, (plot_top + plot_bottom) // 2), font_label, label_color)
+    draw_rotated_label(image, "eta / mV", (78, (plot_top + plot_bottom) // 2), font_label, label_color)
 
     legend_x, legend_y = 340, 210
     for index, fit in enumerate(plot_series):
@@ -1020,6 +1097,335 @@ def build_tafel_plot_png(fits: list[dict[str, Any]]) -> bytes:
     return output.getvalue()
 
 
+def finite_or_none(value: float | None) -> float | None:
+    if value is None:
+        return None
+    if not isinstance(value, (int, float)) or not math.isfinite(value):
+        return None
+    return float(value)
+
+
+def infer_current_multiplier(points: list[Any], mode: str) -> tuple[float, str]:
+    mode = (mode or "auto").lower()
+    if mode == "positive":
+        return 1.0, "OK"
+    if mode == "negative":
+        return -1.0, "OK"
+    if mode != "auto":
+        return 1.0, f"warning: unknown current_sign_mode {mode}; assumed positive"
+
+    currents = [point.im_a for point in points if math.isfinite(point.im_a)]
+    if not currents:
+        return 1.0, "warning: no finite current values; assumed positive"
+    max_pos = max([current for current in currents if current > 0], default=0.0)
+    max_neg_abs = abs(min([current for current in currents if current < 0], default=0.0))
+    if max_pos > max_neg_abs * 1.1:
+        return 1.0, "OK"
+    if max_neg_abs > max_pos * 1.1:
+        return -1.0, "OK"
+    return 1.0, "warning: current sign ambiguous; assumed positive"
+
+
+def interpolate_linear(target_x: float, xs: list[float], ys: list[float]) -> float | None:
+    if not xs or len(xs) != len(ys):
+        return None
+    if target_x < xs[0] or target_x > xs[-1]:
+        return None
+    for index, x_value in enumerate(xs):
+        if math.isclose(target_x, x_value, rel_tol=1e-9, abs_tol=1e-9):
+            return ys[index]
+    for index in range(1, len(xs)):
+        x0, x1 = xs[index - 1], xs[index]
+        if x0 <= target_x <= x1 and not math.isclose(x0, x1):
+            y0, y1 = ys[index - 1], ys[index]
+            return y0 + (target_x - x0) * (y1 - y0) / (x1 - x0)
+    return None
+
+
+def extract_overpotentials_at_targets(
+    points: list[Any],
+    sample_name: str,
+    meta: CurveMeta,
+    target_current_densities: list[float],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    multiplier, sign_status = infer_current_multiplier(points, meta.current_sign_mode)
+    processed_rows: list[dict[str, Any]] = []
+    positive_rows: list[dict[str, Any]] = []
+
+    for point in points:
+        e_ref_v = finite_or_none(point.vf_v)
+        current_a = finite_or_none(point.im_a)
+        if e_ref_v is None or current_a is None or meta.area_cm2 <= 0:
+            continue
+        j_mA_cm2 = multiplier * current_a * 1000 / meta.area_cm2
+        e_rhe_v = e_ref_v + meta.ref_to_she_v + 0.0591 * meta.ph
+        if meta.apply_ir_correction:
+            e_rhe_ircorr_v = e_rhe_v - current_a * meta.rs_ohm * meta.ir_compensation_fraction
+        else:
+            e_rhe_ircorr_v = e_rhe_v
+        eta_v = e_rhe_ircorr_v - 1.23
+        eta_mV = eta_v * 1000
+        row = {
+            "Sample": sample_name,
+            "Pt": getattr(point, "point", None),
+            "Time_s": getattr(point, "time_s", None),
+            "E_ref_V": e_ref_v,
+            "I_A": current_a,
+            "Current_sign_multiplier": multiplier,
+            "j_mA_cm2": j_mA_cm2,
+            "E_RHE_V": e_rhe_v,
+            "E_RHE_iRcorr_V": e_rhe_ircorr_v,
+            "Eta_V": eta_v,
+            "Eta_mV": eta_mV,
+            "OER_positive_branch": j_mA_cm2 > 0,
+            "Status": sign_status,
+        }
+        processed_rows.append(row)
+        if j_mA_cm2 > 0 and math.isfinite(j_mA_cm2) and math.isfinite(eta_mV):
+            positive_rows.append(row)
+
+    # Sort by j and merge repeated j values by rounded bins to keep interpolation stable.
+    grouped: dict[float, list[dict[str, Any]]] = {}
+    for row in sorted(positive_rows, key=lambda item: item["j_mA_cm2"]):
+        grouped.setdefault(round(row["j_mA_cm2"], 9), []).append(row)
+
+    unique_rows: list[dict[str, Any]] = []
+    for _j_key, rows in grouped.items():
+        count = len(rows)
+        unique_rows.append(
+            {
+                "j_mA_cm2": sum(row["j_mA_cm2"] for row in rows) / count,
+                "E_RHE_iRcorr_V": sum(row["E_RHE_iRcorr_V"] for row in rows) / count,
+                "Eta_mV": sum(row["Eta_mV"] for row in rows) / count,
+            }
+        )
+    unique_rows.sort(key=lambda item: item["j_mA_cm2"])
+    j_sorted = [row["j_mA_cm2"] for row in unique_rows]
+    eta_sorted = [row["Eta_mV"] for row in unique_rows]
+    e_sorted = [row["E_RHE_iRcorr_V"] for row in unique_rows]
+
+    target_rows: list[dict[str, Any]] = []
+    summary: dict[str, Any] = {"Sample": sample_name, "Overpotential_note": sign_status if sign_status != "OK" else "OK"}
+    for target_j in target_current_densities:
+        eta_mV = interpolate_linear(target_j, j_sorted, eta_sorted)
+        e_rhe_ircorr = interpolate_linear(target_j, j_sorted, e_sorted)
+        status = "OK"
+        if eta_mV is None or e_rhe_ircorr is None:
+            status = "out of range"
+            if summary["Overpotential_note"] == "OK":
+                summary["Overpotential_note"] = "out of range"
+            elif "out of range" not in summary["Overpotential_note"]:
+                summary["Overpotential_note"] += "; out of range"
+        target_label = int(target_j) if float(target_j).is_integer() else target_j
+        target_rows.append(
+            {
+                "Sample": sample_name,
+                "Target_j_mA_cm2": target_j,
+                "Current_A_equivalent": target_j * meta.area_cm2 / 1000,
+                "E_RHE_iRcorr_V": e_rhe_ircorr,
+                "Eta_mV": eta_mV,
+                "Eta_V": None if eta_mV is None else eta_mV / 1000,
+                "pH": meta.ph,
+                "Area_cm2": meta.area_cm2,
+                "Reference": meta.reference_electrode,
+                "Ref_to_SHE_V": meta.ref_to_she_v,
+                "iR_corrected": meta.apply_ir_correction,
+                "Rs_ohm": meta.rs_ohm,
+                "Status": status,
+            }
+        )
+        summary[f"Eta_{target_label}_mV"] = eta_mV
+        summary[f"E_RHE_at_{target_label}_mAcm2_V"] = e_rhe_ircorr
+
+    return processed_rows, target_rows, summary
+
+
+def build_overpotential_plot_png(
+    processed_by_sample: dict[str, list[dict[str, Any]]],
+    target_rows: list[dict[str, Any]],
+    target_current_densities: list[float],
+) -> bytes:
+    from PIL import Image, ImageDraw
+
+    palette = ["#6a6a6a", "#ff4d4d", "#2f80ed", "#43bf79", "#b46ae5", "#e2b500", "#00a6a6", "#f28e2b"]
+    series: list[tuple[str, str, list[tuple[float, float]]]] = []
+    all_x: list[float] = []
+    all_y: list[float] = []
+    for index, (sample, rows) in enumerate(processed_by_sample.items()):
+        points_xy = [
+            (row["j_mA_cm2"], row["Eta_mV"])
+            for row in rows
+            if row.get("OER_positive_branch") and math.isfinite(row["j_mA_cm2"]) and math.isfinite(row["Eta_mV"])
+        ]
+        points_xy.sort(key=lambda item: item[0])
+        if points_xy:
+            series.append((sample, palette[index % len(palette)], points_xy))
+            all_x.extend(x for x, _y in points_xy)
+            all_y.extend(y for _x, y in points_xy)
+
+    if not series:
+        raise ValueError("No positive OER branch data available for overpotential plot.")
+
+    x_max = max(max(all_x), max(target_current_densities)) * 1.08
+    y_min = min(0.0, min(all_y))
+    y_max = max(all_y) * 1.08
+    x_ticks = nice_ticks(0.0, x_max, 6)
+    y_ticks = nice_ticks(y_min, y_max, 6)
+    x_min, x_max = min(x_ticks), max(x_ticks)
+    y_min, y_max = min(y_ticks), max(y_ticks)
+
+    width, height = 1800, 1400
+    left, right, top, bottom = 300, 120, 150, 190
+    plot_left, plot_top = left, top
+    plot_right, plot_bottom = width - right, height - bottom
+    plot_width = plot_right - plot_left
+    plot_height = plot_bottom - plot_top
+
+    def x_to_px(x_value: float) -> float:
+        return plot_left + (x_value - x_min) / (x_max - x_min) * plot_width
+
+    def y_to_px(y_value: float) -> float:
+        return plot_bottom - (y_value - y_min) / (y_max - y_min) * plot_height
+
+    image = Image.new("RGBA", (width, height), "#ffffff")
+    draw = ImageDraw.Draw(image)
+    font_tick = find_font(48)
+    font_label = find_font(62)
+    font_legend = find_font(34)
+    axis_color = "#000000"
+    label_color = "#000000"
+
+    draw.line((plot_left, plot_bottom, plot_right, plot_bottom), fill=axis_color, width=6)
+    draw.line((plot_left, plot_top, plot_left, plot_bottom), fill=axis_color, width=6)
+    for tick in x_ticks:
+        x = x_to_px(tick)
+        draw.line((x, plot_bottom, x, plot_bottom + 12), fill=axis_color, width=5)
+        draw_text_centered(draw, (x, plot_bottom + 58), format_tick(tick), font_tick, label_color)
+    for tick in y_ticks:
+        y = y_to_px(tick)
+        draw.line((plot_left - 12, y, plot_left, y), fill=axis_color, width=5)
+        label = format_tick(tick)
+        bbox = draw.textbbox((0, 0), label, font=font_tick)
+        draw.text((plot_left - 32 - (bbox[2] - bbox[0]), y - (bbox[3] - bbox[1]) / 2), label, font=font_tick, fill=label_color)
+
+    draw_text_centered(draw, ((plot_left + plot_right) / 2, height - 68), "Current density / mA cm-2", font_label, label_color)
+    draw_rotated_label(image, "Overpotential / mV", (76, (plot_top + plot_bottom) // 2), font_label, label_color)
+
+    for target_j in target_current_densities:
+        if x_min <= target_j <= x_max:
+            x = x_to_px(target_j)
+            for y0 in range(int(plot_top), int(plot_bottom), 28):
+                draw.line((x, y0, x, min(y0 + 14, plot_bottom)), fill="#888888", width=3)
+
+    for sample, color, rows in series:
+        points_px = [(x_to_px(x), y_to_px(y)) for x, y in rows if x_min <= x <= x_max and y_min <= y <= y_max]
+        if len(points_px) >= 2:
+            draw.line(points_px, fill=color, width=8)
+
+    target_by_sample: dict[str, list[dict[str, Any]]] = {}
+    for row in target_rows:
+        target_by_sample.setdefault(row["Sample"], []).append(row)
+    for index, (sample, color, _rows) in enumerate(series):
+        for row in target_by_sample.get(sample, []):
+            if row["Status"] == "OK" and row["Eta_mV"] is not None:
+                x, y = x_to_px(row["Target_j_mA_cm2"]), y_to_px(row["Eta_mV"])
+                draw.ellipse((x - 9, y - 9, x + 9, y + 9), fill=color, outline="#000000", width=2)
+
+    legend_x, legend_y = 340, 210
+    for index, (sample, color, _rows) in enumerate(series):
+        y = legend_y + index * 78
+        labels = []
+        for row in target_by_sample.get(sample, []):
+            target_label = int(row["Target_j_mA_cm2"]) if float(row["Target_j_mA_cm2"]).is_integer() else row["Target_j_mA_cm2"]
+            labels.append(f"eta{target_label}={row['Eta_mV']:.0f}" if row["Eta_mV"] is not None else f"eta{target_label}=NaN")
+        draw.line((legend_x, y, legend_x + 120, y), fill=color, width=9)
+        draw.text((legend_x + 145, y - 24), f"{sample}: " + ", ".join(labels), font=font_legend, fill=label_color)
+
+    output = io.BytesIO()
+    image.convert("RGB").save(output, format="PNG", optimize=True)
+    return output.getvalue()
+
+
+def add_overpotential_results_to_workbook(
+    xlsx_path: Path,
+    processed_rows: list[dict[str, Any]],
+    target_rows: list[dict[str, Any]],
+    summaries: list[dict[str, Any]],
+    plot_png: bytes,
+) -> None:
+    from openpyxl import load_workbook
+    from openpyxl.drawing.image import Image as XLImage
+    from openpyxl.styles import Font
+
+    workbook = load_workbook(xlsx_path)
+    for sheet_name in ("Overpotential_Targets", "Overpotential_Data", "Summary", "Figure"):
+        if sheet_name in workbook.sheetnames:
+            del workbook[sheet_name]
+
+    targets_sheet = workbook.create_sheet("Overpotential_Targets")
+    target_headers = [
+        "Sample",
+        "Target_j_mA_cm2",
+        "Current_A_equivalent",
+        "E_RHE_iRcorr_V",
+        "Eta_mV",
+        "Eta_V",
+        "pH",
+        "Area_cm2",
+        "Reference",
+        "Ref_to_SHE_V",
+        "iR_corrected",
+        "Rs_ohm",
+        "Status",
+    ]
+    targets_sheet.append(target_headers)
+    for cell in targets_sheet[1]:
+        cell.font = Font(bold=True)
+    for row in target_rows:
+        targets_sheet.append([row.get(header) for header in target_headers])
+    targets_sheet.freeze_panes = "A2"
+
+    data_sheet = workbook.create_sheet("Overpotential_Data")
+    data_headers = [
+        "Sample", "Pt", "Time_s", "E_ref_V", "I_A", "Current_sign_multiplier", "j_mA_cm2",
+        "E_RHE_V", "E_RHE_iRcorr_V", "Eta_V", "Eta_mV", "OER_positive_branch", "Status"
+    ]
+    data_sheet.append(data_headers)
+    for cell in data_sheet[1]:
+        cell.font = Font(bold=True)
+    for row in processed_rows:
+        data_sheet.append([row.get(header) for header in data_headers])
+    data_sheet.freeze_panes = "A2"
+
+    summary_sheet = workbook.create_sheet("Summary")
+    extra_headers: list[str] = []
+    for summary in summaries:
+        for key in summary:
+            if key not in {"Sample", "Overpotential_note"} and key not in extra_headers:
+                extra_headers.append(key)
+    summary_headers = ["Sample"] + extra_headers + ["Overpotential_note"]
+    summary_sheet.append(summary_headers)
+    for cell in summary_sheet[1]:
+        cell.font = Font(bold=True)
+    for summary in summaries:
+        summary_sheet.append([summary.get(header) for header in summary_headers])
+    summary_sheet.freeze_panes = "A2"
+
+    figure_sheet = workbook.create_sheet("Figure")
+    figure_sheet["A1"] = "LSV overpotential target extraction"
+    figure_sheet["A1"].font = Font(bold=True)
+    image_path = xlsx_path.parent / "overpotential_plot_for_excel.png"
+    image_path.write_bytes(plot_png)
+    image = XLImage(str(image_path))
+    image.width = 900
+    image.height = 700
+    figure_sheet.add_image(image, "A3")
+
+    for sheet in (targets_sheet, data_sheet, summary_sheet):
+        for column_cells in sheet.columns:
+            sheet.column_dimensions[column_cells[0].column_letter].width = min(max(len(str(column_cells[0].value or "")) + 2, 12), 28)
+    workbook.save(xlsx_path)
+    image_path.unlink(missing_ok=True)
 def make_response_zip(files: dict[str, bytes]) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -1041,9 +1447,26 @@ def parse_form(handler: BaseHTTPRequestHandler) -> tuple[list[dict[str, Any]], l
 
     manifest_raw = form.getfirst("manifest", "[]")
     manifest = json.loads(manifest_raw)
+    target_text = form.getfirst("target_current_densities", "100,200,300")
+    target_current_densities = [float(part.strip()) for part in target_text.split(",") if part.strip()]
+    if not target_current_densities:
+        raise ValueError("At least one target current density is required.")
+
+    reference_electrode = form.getfirst("reference_electrode", "Ag/AgCl")
+    ref_to_she_text = form.getfirst("ref_to_she_v", "")
+    if not ref_to_she_text:
+        ref_to_she_text = "0.098" if reference_electrode == "Hg/HgO" else "0.197"
+
     options = {
         "tafel_min_j": float(form.getfirst("tafel_min_j", "10")),
         "tafel_max_j": float(form.getfirst("tafel_max_j", "100")),
+        "reference_electrode": reference_electrode,
+        "ref_to_she_v": float(ref_to_she_text),
+        "target_current_densities": target_current_densities,
+        "apply_ir_correction": form.getfirst("apply_ir_correction", "false").lower() in {"1", "true", "yes", "on"},
+        "rs_ohm": float(form.getfirst("rs_ohm", "0") or 0),
+        "ir_compensation_fraction": float(form.getfirst("ir_compensation_fraction", "1.0") or 1.0),
+        "current_sign_mode": form.getfirst("current_sign_mode", "auto"),
     }
     uploaded = form["files"] if "files" in form else []
     if not isinstance(uploaded, list):
@@ -1092,12 +1515,18 @@ class Handler(BaseHTTPRequestHandler):
                     ph=float(item["pH"]),
                     area_cm2=float(item["area_cm2"]),
                     sheet_name=(item.get("sheet_name") or item["name"]),
+                    reference_electrode=options["reference_electrode"],
+                    ref_to_she_v=options["ref_to_she_v"],
+                    apply_ir_correction=options["apply_ir_correction"],
+                    rs_ohm=options["rs_ohm"],
+                    ir_compensation_fraction=options["ir_compensation_fraction"],
+                    current_sign_mode=options["current_sign_mode"],
                 )
                 for item in manifest
             }
 
             if not uploaded_files:
-                raise ValueError("没有收到文件。")
+                raise ValueError("No files were received.")
 
             curves: list[tuple[Path, list[Any], CurveMeta]] = []
             WORKSPACE_TMP.mkdir(parents=True, exist_ok=True)
@@ -1107,21 +1536,52 @@ class Handler(BaseHTTPRequestHandler):
                 tmp = run_dir
                 for filename, content in uploaded_files:
                     if filename not in meta_by_name:
-                        raise ValueError(f"缺少参数：{filename}")
+                        raise ValueError(f"Missing parameters for {filename}")
                     source = tmp / filename
                     source.write_bytes(content)
                     points = extract_vfim(source)
                     curves.append((Path(filename), points, meta_by_name[filename]))
 
                 full_path = tmp / "LSV_full.xlsx"
-                write_xlsx(full_path, curves, resistance_ohm=3.8504, rhe_offset_v=0.197, ph_slope_v=0.0591)
-                origin_xlsx, origin_csv = build_origin_tables(curves)
-                plot_png = build_lsv_plot_png(curves)
+                workbook_resistance = options["rs_ohm"] * options["ir_compensation_fraction"] if options["apply_ir_correction"] else 0.0
+                write_xlsx(full_path, curves, resistance_ohm=workbook_resistance, rhe_offset_v=options["ref_to_she_v"], ph_slope_v=0.0591)
+                origin_xlsx, origin_csv = build_origin_tables(curves, resistance_ohm=workbook_resistance, rhe_offset_v=options["ref_to_she_v"], ph_slope_v=0.0591)
+                plot_png = build_lsv_plot_png(curves, resistance_ohm=workbook_resistance, rhe_offset_v=options["ref_to_she_v"], ph_slope_v=0.0591)
+
+                all_overpotential_rows: list[dict[str, Any]] = []
+                all_target_rows: list[dict[str, Any]] = []
+                overpotential_summaries: list[dict[str, Any]] = []
+                processed_by_sample: dict[str, list[dict[str, Any]]] = {}
+                used_overpotential_titles: set[str] = set()
+                for source, points, meta in curves:
+                    sample_name = sheet_title(meta.sheet_name or source.name, used_overpotential_titles)
+                    processed_rows, target_rows, summary = extract_overpotentials_at_targets(
+                        points,
+                        sample_name,
+                        meta,
+                        options["target_current_densities"],
+                    )
+                    all_overpotential_rows.extend(processed_rows)
+                    all_target_rows.extend(target_rows)
+                    overpotential_summaries.append(summary)
+                    processed_by_sample[sample_name] = processed_rows
+                overpotential_png = build_overpotential_plot_png(
+                    processed_by_sample,
+                    all_target_rows,
+                    options["target_current_densities"],
+                )
+                add_overpotential_results_to_workbook(
+                    full_path,
+                    all_overpotential_rows,
+                    all_target_rows,
+                    overpotential_summaries,
+                    overpotential_png,
+                )
                 tafel_fits = compute_tafel_fits(
                     curves,
                     min_j=options["tafel_min_j"],
                     max_j=options["tafel_max_j"],
-                    rhe_offset_v=0.197,
+                    rhe_offset_v=options["ref_to_she_v"],
                     ph_slope_v=0.0591,
                 )
                 tafel_xlsx = build_tafel_workbook(tafel_fits)
@@ -1132,6 +1592,7 @@ class Handler(BaseHTTPRequestHandler):
                         "Origin_CE.xlsx": origin_xlsx,
                         "Origin_CE.csv": origin_csv,
                         "LSV_plot.png": plot_png,
+                        "Overpotential_Targets_plot.png": overpotential_png,
                         "Tafel_fit.xlsx": tafel_xlsx,
                         "Tafel_plot.png": tafel_png,
                     }
@@ -1159,14 +1620,14 @@ def main() -> int:
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     url = f"http://{args.host}:{args.port}"
-    print(f"LSV 数据转换工具已启动：{url}")
-    print("按 Ctrl+C 停止。")
+    print(f"LSV tool started: {url}")
+    print("Press Ctrl+C to stop.")
     if not args.no_open:
         webbrowser.open(url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\n已停止。")
+        print("\nStopped.")
     finally:
         server.server_close()
     return 0
